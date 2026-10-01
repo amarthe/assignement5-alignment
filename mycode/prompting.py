@@ -3,11 +3,21 @@ import random
 from cs336_alignment.vllm_utils import VLLMServer
 from cs336_alignment.drgrpo_grader import question_only_reward_fn, r1_zero_reward_fn, extract_answer
 
-gsm8k_train_path = "/home/alex/work/llm_learning/stanford_course/assignment5-alignment/data/gsm8k/test.jsonl"
-gsm8k_test_path = "/home/alex/work/llm_learning/stanford_course/assignment5-alignment/data/gsm8k/test.jsonl"
+GSM8K_TEST_PATH = "data/gsm8k/test.jsonl"
+GSM8K_TRAIN_PATH = "data/gsm8k/train.jsonl"
 
 vllm_server = VLLMServer("allenai/OLMo-2-0425-1B", gpu=0)
 vllm_server.start()
+
+sampling_params = {
+    "temperature": 1,
+    "max_tokens": 512,
+    "seed": 42,
+    "n":1,
+    "stop": ["</answer>"],
+    "include_stop_str_in_output": True,
+}
+BATCH_SIZE = 32
 
 def load_data(path):
     data = []
@@ -24,6 +34,7 @@ def parse_gsm8k_data(samples):
         reasoning = answer[0].strip()
         final_answer = answer[1].strip()
         parsed_data.append({"question": question, "reasoning": reasoning, "answer": final_answer})
+    return parsed_data
 
 def sample_data(data, n=1):
     return random.sample(data, n)
@@ -48,7 +59,8 @@ def generate_prompts(samples, prompt_type="question_only"):
         raise ValueError(f"Invalid prompt type: {prompt_type}")
 
 def generate_model_answers(prompts):
-    raise NotImplementedError
+    answers = vllm_server.generate_completions(prompts, sampling_params, batch_size=BATCH_SIZE)
+    return [answer.text for answer in answers]
 
 def answer_questions(samples, prompt_type="question_only"):
     prompts = generate_prompts(samples, prompt_type)
@@ -89,17 +101,3 @@ def extract_model_answer(response):
     return extract_answer(response)
 
 # def init():
-#     sampling_params = {
-#         "temperature": 1,
-#         "max_tokens": 512,
-#         "seed": 42,
-#         "stop": ["</answer>"],
-#         "include_stop_str_in_output": True,
-#     }
-
-#     server = vllm_utils.VLLMServer("allenai/OLMo-2-0425-1B")
-#     server.start()
-#     server.init_weight_sync(policy_device="cuda:0")
-#     answer = server.generate_completions(["Hello, world!"], sampling_params=sampling_params)
-#     print(answer[0].text)
-#     server.stop()
