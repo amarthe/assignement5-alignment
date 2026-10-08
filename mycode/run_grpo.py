@@ -1,4 +1,4 @@
-from mycode.grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step_standard_on_policy, TrainingArgs
+from grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step_standard_on_policy, TrainingArgs
 from mycode.inference import load_data, extract_gt_answers, sample_data, answer_questions, generate_prompts, generate_model_answers
 from cs336_alignment.vllm_utils import VLLMServer
 from tqdm.auto import tqdm
@@ -13,7 +13,12 @@ vllm_server.init_weight_sync(args.device)
 
 # Initialize Training setup
 model, tokenizer = get_model_and_tokenizer(args.model_name, args.device)
-optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.betas, weight_decay=args.weight_decay)
+optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.be
+res_question_only = eval_model(vllm_server, data, "question_only", sampling_params)
+res_zero_shot = eval_model(vllm_server, data, "zero_shot", sampling_params)
+res_few_shot = eval_model(vllm_server, data, "few_shot", sampling_params)
+
+tas, weight_decay=args.weight_decay)
 
 # Load datasets
 train_dataset = load_data(args.train_dataset)

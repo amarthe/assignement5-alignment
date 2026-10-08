@@ -1,9 +1,17 @@
-from mycode.grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step_standard_on_policy, TrainingArgs
-from mycode.prompting import load_data, extract_gt_answers, sample_data, answer_questions, generate_prompts, generate_model_answers
+from grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step_standard_on_policy, TrainingArgs
+from inference import load_data, extract_gt_answers, sample_data, answer_questions, generate_prompts, generate_model_answers
 from cs336_alignment.vllm_utils import VLLMServer
 from tqdm.auto import tqdm
 
 args = TrainingArgs()
+sampling_params = {
+    "temperature": 1,
+    "max_tokens": 512,
+    "seed": 42,
+    "n":1,
+    "stop": ["</answer>"],
+    "include_stop_str_in_output": True,
+}
 num_prompts_per_batch = args.rollout_batch_size // args.group_size
 
 # Initialize Inference setup
@@ -29,7 +37,7 @@ assert(len(repeated_questions) == args.rollout_batch_size)
 
 # Generate prompts, ground truths and rollouts
 repeated_prompts = generate_prompts(repeated_questions, args.prompt_type)
-rollout_responses = generate_model_answers(repeated_prompts)
+rollout_responses = generate_model_answers(vllm_server, repeated_prompts, sampling_params)
 repeated_ground_truths = extract_gt_answers(repeated_questions)
 
 # TODO remove
