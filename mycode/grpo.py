@@ -26,8 +26,8 @@ class TrainingArgs():
     model_name: str = "allenai/OLMo-2-0425-1B"
 
     # Datasets
-    train_dataset: str = "/data/gsm8k/train.jsonl"
-    test_dataset: str = "/data/gsm8k/test.jsonl"
+    train_dataset: str = "data/gsm8k/train.jsonl"
+    test_dataset: str = "data/gsm8k/test.jsonl"
 
     # 
     reward_fn = r1_zero_reward_fn
