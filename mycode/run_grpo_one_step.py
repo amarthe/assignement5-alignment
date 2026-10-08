@@ -14,14 +14,14 @@ sampling_params = {
 }
 num_prompts_per_batch = args.rollout_batch_size // args.group_size
 
+# Load datasets
+train_dataset = load_data(args.train_dataset)
+test_dataset = load_data(args.test_dataset)
+
 # Initialize Inference setup
 vllm_server = VLLMServer(args.model_name, gpu=0)
 vllm_server.start()
 #vllm_server.init_weight_sync(args.device)
-
-# Load datasets
-train_dataset = load_data(args.train_dataset)
-test_dataset = load_data(args.test_dataset)
 
 # Initialize logging
 # TODO log file + wandb. TODO when we are the sure everything else is working
@@ -64,6 +64,8 @@ loss, log = grpo_train_step_standard_on_policy(
 )
 #vllm_server.sync_policy_weights(model)
 #progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
+print(f"loss: {loss.item():.4f}")
+print(log)
 
 #log and evaluate
 if False:

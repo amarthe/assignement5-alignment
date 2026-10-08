@@ -55,7 +55,7 @@ class TrainingArgs():
     max_grad_norm: float = 1.0
     learning_rate: float = 1e-5
     gradient_accumulation_steps: int = 32
-    betas: tuple[float, float] = (0.9, 0.95),
+    betas: tuple[float, float] = (0.9, 0.95)
     weight_decay: float = 0.0
 
     # Misc
