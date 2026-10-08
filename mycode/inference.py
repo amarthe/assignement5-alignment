@@ -5,7 +5,7 @@ from cs336_alignment.drgrpo_grader import question_only_reward_fn, r1_zero_rewar
 GSM8K_TEST_PATH = "data/gsm8k/test.jsonl"
 GSM8K_TRAIN_PATH = "data/gsm8k/train.jsonl"
 
-BATCH_SIZE = 32
+BATCH_SIZE = 256
 
 def load_data(path):
     data = []

@@ -16,9 +16,9 @@ sampling_params = {
 vllm_server = VLLMServer("allenai/OLMo-2-0425-1B", gpu=0)
 vllm_server.start()
 
-res_question_only = eval_model(data, "question_only", sampling_params)
-res_zero_shot = eval_model(data, "zero_shot", sampling_params)
-res_few_shot = eval_model(data, "few_shot", sampling_params)
+res_question_only = eval_model(vllm_server, data, "question_only", sampling_params)
+res_zero_shot = eval_model(vllm_server, data, "zero_shot", sampling_params)
+res_few_shot = eval_model(vllm_server, data, "few_shot", sampling_params)
 
 ress = [res_question_only, res_zero_shot, res_few_shot]
 
