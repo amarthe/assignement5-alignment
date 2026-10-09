@@ -95,10 +95,8 @@ def compute_rollout_rewards(
         repeated_ground_truths: list[str]
 ) -> tuple[torch.Tensor, dict[str, float]]:
     rewards = []
-    # print(f"rollout_responses: {type(rollout_responses)}")
-    # print(f"rollout_response: {type(rollout_responses[0])}")
+
     for response, gt in zip(rollout_responses, repeated_ground_truths):
-        print(f"resp, gt: {response}, {gt}")
         rewards.append(reward_fn(response, gt))
     raw_rewards = torch.tensor([r["reward"] for r in rewards])
 
@@ -207,8 +205,6 @@ def grpo_train_step_standard_on_policy(
     total_loss = torch.tensor(0., requires_grad=False)
 
     # Advantage computation
-    # print(f"rollout_responses: {type(rollout_responses)}")
-    # print(f"rollout_response: {type(rollout_responses[0])}")
     rewards, reward_logs = compute_rollout_rewards(reward_fn, rollout_responses, repeated_ground_truths)
     advantages, advantage_logs = compute_group_normalized_rewards(rewards, group_size, baseline, advantage_eps, advantage_normalizer)
 
