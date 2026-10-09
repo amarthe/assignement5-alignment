@@ -1,11 +1,12 @@
 from transformers import PreTrainedTokenizer, PreTrainedModel, AutoModelForCausalLM, AutoTokenizer
 import torch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Literal
 from einops import rearrange
 from torch.optim import Optimizer
 import numpy as np
 from cs336_alignment.drgrpo_grader import r1_zero_reward_fn
+from typing import Callable
 
 PADDING_TOKEN = 0
 
@@ -30,7 +31,7 @@ class TrainingArgs():
     test_dataset: str = "data/gsm8k/test.jsonl"
 
     # 
-    reward_fn = r1_zero_reward_fn
+    reward_fn: Callable = field(default_factory=lambda: r1_zero_reward_fn)
     prompt_type = "few_shot"
 
     # Number of data
@@ -61,7 +62,7 @@ class TrainingArgs():
     # Misc
     log_file: str = None
     save_directory: str = None
-    device = "cuda:0"
+    device = "cpu"
 
 def tokenize_prompt_and_output(prompt_strs: list[str], output_strs: list[str], tokenizer: PreTrainedTokenizer) -> dict[str, torch.Tensor]:
     tokenized_prompts = tokenizer(prompt_strs)["input_ids"]
@@ -94,7 +95,10 @@ def compute_rollout_rewards(
         repeated_ground_truths: list[str]
 ) -> tuple[torch.Tensor, dict[str, float]]:
     rewards = []
+    # print(f"rollout_responses: {type(rollout_responses)}")
+    # print(f"rollout_response: {type(rollout_responses[0])}")
     for response, gt in zip(rollout_responses, repeated_ground_truths):
+        print(f"resp, gt: {response}, {gt}")
         rewards.append(reward_fn(response, gt))
     raw_rewards = torch.tensor([r["reward"] for r in rewards])
 
@@ -203,6 +207,8 @@ def grpo_train_step_standard_on_policy(
     total_loss = torch.tensor(0., requires_grad=False)
 
     # Advantage computation
+    # print(f"rollout_responses: {type(rollout_responses)}")
+    # print(f"rollout_response: {type(rollout_responses[0])}")
     rewards, reward_logs = compute_rollout_rewards(reward_fn, rollout_responses, repeated_ground_truths)
     advantages, advantage_logs = compute_group_normalized_rewards(rewards, group_size, baseline, advantage_eps, advantage_normalizer)
 

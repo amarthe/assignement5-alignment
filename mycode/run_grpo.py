@@ -2,6 +2,8 @@ from grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_respon
 from mycode.inference import load_data, extract_gt_answers, sample_data, answer_questions, generate_prompts, generate_model_answers
 from cs336_alignment.vllm_utils import VLLMServer
 from tqdm.auto import tqdm
+import logging
+import wandb
 
 args = TrainingArgs()
 num_prompts_per_batch = args.rollout_batch_size // args.group_size
@@ -13,19 +15,17 @@ vllm_server.init_weight_sync(args.device)
 
 # Initialize Training setup
 model, tokenizer = get_model_and_tokenizer(args.model_name, args.device)
-optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.be
-res_question_only = eval_model(vllm_server, data, "question_only", sampling_params)
-res_zero_shot = eval_model(vllm_server, data, "zero_shot", sampling_params)
-res_few_shot = eval_model(vllm_server, data, "few_shot", sampling_params)
-
-tas, weight_decay=args.weight_decay)
+optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.betas, weight_decay=args.weight_decay)
 
 # Load datasets
 train_dataset = load_data(args.train_dataset)
 test_dataset = load_data(args.test_dataset)
 
-# Initialize logging
-# TODO log file + wandb. TODO when we are the sure everything else is working
+# Initialize logging TODO better
+wandb_project = "LLM-RL-Experiments"
+wandb_run_name = "First run"
+wandb.login()
+run = wandb.init(project=wandb_project, name=wandb_run_name)
 
 progress_bar = tqdm(range(args.num_rollout_steps))
 for step in progress_bar:
@@ -58,6 +58,7 @@ for step in progress_bar:
     )
     vllm_server.sync_policy_weights(model)
     progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
+    run.log(log)
 
     #log and evaluate
     if step % args.eval_step:
@@ -70,3 +71,4 @@ for step in progress_bar:
         _, eval_reward_log = compute_rollout_rewards(args.reward_fn, answers, ground_truths)
         mean_reward, mean_format_reward = eval_reward_log["mean_reward"], eval_reward_log["mean_format_reward"]
         print(f"Step {step}: reward: {mean_reward}\t format_reward: {mean_format_reward}")
+        #TODO also log
