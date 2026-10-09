@@ -79,7 +79,7 @@ def tokenize_prompt_and_output(prompt_strs: list[str], output_strs: list[str], t
     return {"input_ids": input_ids, "labels": labels, "response_mask":response_mask}
 
 def get_response_log_probs(model: PreTrainedModel, input_ids: torch.Tensor, labels: torch.Tensor, return_token_entropy: bool=False) -> dict[str, torch.Tensor]:
-    logits = model(input_ids).logits
+    logits = model(input_ids.to(model.device)).logits
     logits_log_softmax = torch.nn.functional.log_softmax(logits, dim=-1)
     log_probs = logits_log_softmax.gather(-1, labels.unsqueeze(-1)).squeeze(-1)
 
