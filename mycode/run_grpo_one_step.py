@@ -64,6 +64,8 @@ loss, log = grpo_train_step_standard_on_policy(
 )
 #vllm_server.sync_policy_weights(model)
 #progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
+print(f"loss: {loss.item():.4f}")
+print(log)
 
 #log and evaluate
 if False:
