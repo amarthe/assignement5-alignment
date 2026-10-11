@@ -55,7 +55,7 @@ class TrainingArgs():
     optimizer_class: torch.optim.Optimizer = torch.optim.AdamW
     max_grad_norm: float = 1.0
     learning_rate: float = 1e-5
-    gradient_accumulation_steps: int = 32
+    gradient_accumulation_steps: int = 64
     betas: tuple[float, float] = (0.9, 0.95)
     weight_decay: float = 0.0
 
@@ -216,10 +216,10 @@ def grpo_train_step_standard_on_policy(
     for i in range(0, len(repeated_prompts), microbatch_size):
 
         # Extract microbatch
-        inputs_microbatch = input_ids[i:i+microbatch_size]
-        labels_microbatch = labels[i:i+microbatch_size]
-        advantages_microbatch = advantages[i:i+microbatch_size]
-        mask_microbatch = response_mask[i:i+microbatch_size]
+        inputs_microbatch = input_ids[i:i+microbatch_size].to(model.device)
+        labels_microbatch = labels[i:i+microbatch_size].to(model.device)
+        advantages_microbatch = advantages[i:i+microbatch_size].to(model.device)
+        mask_microbatch = response_mask[i:i+microbatch_size].to(model.device)
 
         # Policy log probs computation
         policy_log_probs_and_entropy = get_response_log_probs(model, inputs_microbatch, labels_microbatch, return_token_entropy=True)
@@ -231,7 +231,7 @@ def grpo_train_step_standard_on_policy(
 
         # Accumulate gradients
         loss.backward()
-        total_loss += loss
+        total_loss += loss.to(model.device)
 
     # Optimizer Step
     grad_norm = torch.nn.utils.get_total_norm(model.parameters())

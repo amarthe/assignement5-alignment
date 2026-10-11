@@ -8,7 +8,7 @@ sampling_params = {
     "temperature": 1,
     "max_tokens": 512,
     "seed": 42,
-    "n":1,
+    "n":args.group_size,
     "stop": ["</answer>"],
     "include_stop_str_in_output": True,
 }
@@ -33,11 +33,11 @@ questions = sample_data(train_dataset, n=num_prompts_per_batch)
 repeated_questions = []
 for question in questions:
     repeated_questions += [question] * args.group_size
-assert(len(repeated_questions) == args.rollout_batch_size)
 
 # Generate prompts, ground truths and rollouts
+prompts = generate_prompts(questions, args.prompt_type)
 repeated_prompts = generate_prompts(repeated_questions, args.prompt_type)
-rollout_responses = generate_model_answers(vllm_server, repeated_prompts, sampling_params)
+rollout_responses = generate_model_answers(vllm_server, prompts, sampling_params)
 repeated_ground_truths = extract_gt_answers(repeated_questions)
 
 # TODO remove
