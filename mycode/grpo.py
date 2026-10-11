@@ -202,7 +202,7 @@ def grpo_train_step_standard_on_policy(
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor | float]]:
 
     microbatch_size = len(repeated_prompts) // gradient_accumulation_steps
-    total_loss = torch.tensor(0., requires_grad=False)
+    total_loss = torch.tensor(0., requires_grad=False, device=model.device)
 
     # Advantage computation
     rewards, reward_logs = compute_rollout_rewards(reward_fn, rollout_responses, repeated_ground_truths)
