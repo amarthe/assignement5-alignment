@@ -30,9 +30,10 @@ class TrainingArgs():
     train_dataset: str = "data/gsm8k/train.jsonl"
     test_dataset: str = "data/gsm8k/test.jsonl"
 
-    # 
+    # Prompt type
     reward_fn: Callable = field(default_factory=lambda: r1_zero_reward_fn)
-    prompt_type = "few_shot"
+    prompt_type: str = "few_shot"
+    stop_tokens: list[str] = ["</answer>"]
 
     # Number of data
     n_train_examples: int = 6400
@@ -50,6 +51,7 @@ class TrainingArgs():
     # Inference parameters
     sampling_temperature: float = 1.0
     sampling_max_tokens: int = 512
+    inference_gpu: int = 1
 
     # Optimization parameters
     optimizer_class: torch.optim.Optimizer = torch.optim.AdamW
@@ -59,9 +61,15 @@ class TrainingArgs():
     betas: tuple[float, float] = (0.9, 0.95)
     weight_decay: float = 0.0
 
-    # Misc
-    log_file: str = None
+    # Loggingg
+    log_folder: str = None
     save_directory: str = None
+    use_wandb: bool = False
+    wandb_project: str = "LLM-RL-Experiments"
+    run_name: str = "defaul_run"
+
+    # Misc
+    seed: int = 42
     device = "cuda:0"
 
 def tokenize_prompt_and_output(prompt_strs: list[str], output_strs: list[str], tokenizer: PreTrainedTokenizer) -> dict[str, torch.Tensor]:
@@ -234,9 +242,11 @@ def grpo_train_step_standard_on_policy(
         total_loss += loss.to(model.device)
 
     # Optimizer Step
-    grad_norm = torch.nn.utils.get_total_norm(model.parameters())
+    grad_norm = torch.sqrt(sum([torch.norm(p.grad) for p in model.parameters()]))
     if max_grad_norm is not None:
+        print(f"Before clip: {grad_norm}")
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        print(f"After clip: {torch.sqrt(sum([torch.norm(p.grad) for p in model.parameters()]))}")
     optimizer.step()
     optimizer.zero_grad()
 
