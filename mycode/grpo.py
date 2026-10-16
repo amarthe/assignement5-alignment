@@ -33,7 +33,7 @@ class TrainingArgs():
     # Prompt type
     reward_fn: Callable = field(default_factory=lambda: r1_zero_reward_fn)
     prompt_type: str = "few_shot"
-    stop_tokens: list[str] = ["</answer>"]
+    stop_tokens: list[str] = field(default_factory=lambda: ["</answer>"])
 
     # Number of data
     n_train_examples: int = 6400
@@ -128,13 +128,19 @@ def compute_group_normalized_rewards(
 
     if baseline == "mean":
         baseline_values = torch.mean(raw_rewards, dim=-1, keepdim=True)
+    elif baseline == "none":
+        baseline_values = torch.zeros(raw_rewards.size())
     else:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     baselined_rewards = raw_rewards - baseline_values
 
     if advantage_normalizer == "std":
         normalizer_value = torch.std(raw_rewards, dim=-1, keepdim=True) + advantage_eps
+    elif advantage_normalizer == "none":
+        normalizer_value = torch.ones(raw_rewards.size())
+    elif advantage_normalizer == "mean":
+        normalizer_value = torch.mean(raw_rewards, dim=-1, keepdim=True) + advantage_eps
     else:
         raise NotImplementedError
 
@@ -148,20 +154,56 @@ def compute_group_normalized_rewards(
 def compute_policy_gradient_loss(
         raw_rewards_or_advantages: torch.Tensor,
         policy_log_probs: torch.Tensor,
-        importance_reweighting_method: Literal["none", "noclip", "grpo", "gspo"] = "none",
+        importance_reweighting_method: Literal["none", "noclip", "grpo", "cispo", "gspo"] = "none",
         old_log_probs: torch.Tensor | None = None,
         cliprange: float | None = None,
         response_mask: torch.Tensor | None = None
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
 
-    if importance_reweighting_method != "none":
-        raise NotImplementedError
-
     raw_rewards_or_advantages = raw_rewards_or_advantages.view(raw_rewards_or_advantages.size()[0], 1)
 
-    policy_gradient_loss = -policy_log_probs * raw_rewards_or_advantages
+    if importance_reweighting_method == "none":
+        policy_gradient_loss = -policy_log_probs * raw_rewards_or_advantages
+    
+    elif importance_reweighting_method == "noclip":
+        assert(old_log_probs is not None)
 
-    #TODO plus tard
+        importance_weight = torch.exp(policy_log_probs - old_log_probs)
+        policy_gradient_loss = -raw_rewards_or_advantages * importance_weight
+
+    elif importance_reweighting_method == "grpo":
+        assert(old_log_probs is not None)
+        assert(cliprange is not None)
+
+        importance_weight = torch.exp(policy_log_probs - old_log_probs)
+        clipped_weights = torch.clip(importance_weight,1-cliprange, 1+cliprange)
+
+        weighted_advantages = raw_rewards_or_advantages * importance_weight
+        clipped_weighted_advantages = raw_rewards_or_advantages * clipped_weights
+
+        policy_gradient_loss = -torch.minimum(clipped_weighted_advantages, weighted_advantages)
+
+    elif importance_reweighting_method == "cispo":
+        raise NotImplementedError
+
+    elif importance_reweighting_method == "gspo":
+        assert(old_log_probs is not None)
+        assert(cliprange is not None)
+        assert(response_mask is not None)
+
+        response_lengths = response_mask.sum(dim=-1,keepdim=True)
+        averaged_importance_weight = torch.exp(torch.sum((policy_log_probs - old_log_probs)*response_mask, dim=-1, keepdim=True) / response_lengths)
+        assert(averaged_importance_weight.size() == raw_rewards_or_advantages.size())
+
+        clipped_averaged_importance_weight = averaged_importance_weight.clip(1-cliprange, 1+cliprange)
+        assert(clipped_averaged_importance_weight.size() == raw_rewards_or_advantages.size())
+
+        policy_gradient_loss = - torch.minimum(averaged_importance_weight * raw_rewards_or_advantages, clipped_averaged_importance_weight * raw_rewards_or_advantages).tile([1, policy_log_probs.size()[1]])
+
+    else:
+        raise NotImplementedError
+
+    #TODO add the importance weights
     logs = {}
 
     return policy_gradient_loss, logs
@@ -185,7 +227,7 @@ def aggregate_loss_across_microbatch(
     loss = torch.sum(per_token_policy_gradient_loss * mask / normalization)
     return loss
 
-def grpo_train_step_standard_on_policy(
+def grpo_train_step(
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
         optimizer: Optimizer,
@@ -228,25 +270,30 @@ def grpo_train_step_standard_on_policy(
         labels_microbatch = labels[i:i+microbatch_size].to(model.device)
         advantages_microbatch = advantages[i:i+microbatch_size].to(model.device)
         mask_microbatch = response_mask[i:i+microbatch_size].to(model.device)
+        old_log_probs_microbatch = old_log_probs[i:i+microbatch_size].to(model.device) if old_log_probs is not None else None
+
+        # Not tested yet
+        # if torch.max(advantages_microbatch.abs()).value[0] == 0.:
+        #     continue
 
         # Policy log probs computation
         policy_log_probs_and_entropy = get_response_log_probs(model, inputs_microbatch, labels_microbatch, return_token_entropy=True)
         policy_log_probs, entropy = policy_log_probs_and_entropy["log_probs"], policy_log_probs_and_entropy["token_entropy"]
 
         #Loss computation
-        per_token_loss, loss_logs = compute_policy_gradient_loss(advantages_microbatch, policy_log_probs, importance_reweighting_method, old_log_probs, cliprange, mask_microbatch)
-        loss = aggregate_loss_across_microbatch(per_token_loss, mask_microbatch, loss_normalization, normalization_constant) * (microbatch_size / len(repeated_prompts))
+        per_token_loss, loss_logs = compute_policy_gradient_loss(advantages_microbatch, policy_log_probs, importance_reweighting_method, old_log_probs_microbatch, cliprange, mask_microbatch)
+        loss = aggregate_loss_across_microbatch(per_token_loss, mask_microbatch, loss_normalization, normalization_constant) 
+        if loss_normalization == "sequence": # For GRPO, also average accross batch
+            loss = loss * (microbatch_size / len(repeated_prompts))
 
         # Accumulate gradients
         loss.backward()
         total_loss += loss.to(model.device)
 
     # Optimizer Step
-    grad_norm = torch.sqrt(sum([torch.norm(p.grad) for p in model.parameters()]))
+    grad_norm = torch.sqrt(sum([torch.norm(p.grad).square() for p in model.parameters()]))
     if max_grad_norm is not None:
-        print(f"Before clip: {grad_norm}")
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-        print(f"After clip: {torch.sqrt(sum([torch.norm(p.grad) for p in model.parameters()]))}")
     optimizer.step()
     optimizer.zero_grad()
 
@@ -254,7 +301,7 @@ def grpo_train_step_standard_on_policy(
     logs = {
         "loss": total_loss,
         "grad_norm": grad_norm,
-        "token_entropy": entropy,
+        "mean_token_entropy": entropy.mean(),
         "mean_reward": reward_logs["mean_reward"],
         "mean_format_reward": reward_logs["mean_format_reward"],
         "mean_response_length": np.mean([len(r) for r in rollout_responses]),

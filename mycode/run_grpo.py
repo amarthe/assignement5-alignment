@@ -1,4 +1,4 @@
-from grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step_standard_on_policy, TrainingArgs
+from grpo import get_model_and_tokenizer, tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step, TrainingArgs
 from mycode.inference import load_data, extract_gt_answers, sample_data, answer_questions, generate_prompts, generate_model_answers
 from cs336_alignment.vllm_utils import VLLMServer
 from tqdm.auto import tqdm
@@ -7,25 +7,31 @@ import wandb
 
 args = TrainingArgs()
 num_prompts_per_batch = args.rollout_batch_size // args.group_size
+sampling_params = {
+    "temperature": args.sampling_temperature,
+    "max_tokens": args.sampling_max_tokens,
+    "seed": args.seed,
+    "n":args.group_size,
+    "stop": args.stop_tokens,
+    "include_stop_str_in_output": True,
+}
 
 # Initialize Inference setup
-vllm_server = VLLMServer(args.model_name, gpu=1)
+vllm_server = VLLMServer(args.model_name, gpu=args.inference_gpu) 
 vllm_server.start()
 vllm_server.init_weight_sync(args.device)
-
-# Initialize Training setup
-model, tokenizer = get_model_and_tokenizer(args.model_name, args.device)
-optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.betas, weight_decay=args.weight_decay)
 
 # Load datasets
 train_dataset = load_data(args.train_dataset)
 test_dataset = load_data(args.test_dataset)
 
-# Initialize logging TODO better
-wandb_project = "LLM-RL-Experiments"
-wandb_run_name = "First run"
-wandb.login()
-run = wandb.init(project=wandb_project, name=wandb_run_name)
+# Initialize Training setup
+model, tokenizer = get_model_and_tokenizer(args.model_name, args.device)
+optimizer = args.optimizer_class(params=model.parameters(), lr=args.learning_rate, betas=args.betas, weight_decay=args.weight_decay)
+
+if args.use_wandb:
+    wandb.login()
+    run = wandb.init(project=args.wandb_project, name=args.wandb_run_name)
 
 progress_bar = tqdm(range(args.num_rollout_steps))
 for step in progress_bar:
@@ -43,7 +49,7 @@ for step in progress_bar:
     repeated_ground_truths = extract_gt_answers(repeated_questions)
 
     # Perform 1 gradient step
-    loss, log = grpo_train_step_standard_on_policy(
+    loss, log = grpo_train_step(
         model=model,
         tokenizer=tokenizer,
         optimizer=optimizer,
