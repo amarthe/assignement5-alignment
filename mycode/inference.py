@@ -58,6 +58,97 @@ def generate_model_answers(model, prompts, sampling_params, batch_size=BATCH_SIZ
     answers = model.generate_completions(prompts, sampling_params, batch_size=batch_size)
     return [answer.text for answer in answers]
 
+def generate_model_answers_hf(model, tokenizer, prompts, sampling_params, batch_size=2):
+    """Generate decoder-only HF responses, grouped by prompt then sample.
+
+    Accepts the same sampling parameters as generate_model_answers. batch_size
+    counts sequences, including the n samples per prompt. A seed makes calls
+    reproducible for a fixed batch size, but does not reproduce vLLM samples.
+    """
+    import torch
+    from transformers import StoppingCriteria, StoppingCriteriaList
+
+    temperature = sampling_params["temperature"]
+    max_tokens = sampling_params["max_tokens"]
+    n = sampling_params["n"]
+    if batch_size <= 0 or n <= 0 or max_tokens <= 0 or temperature < 0:
+        raise ValueError("batch_size, n and max_tokens must be positive; temperature must be nonnegative.")
+    stop_strings = sampling_params.get("stop") or []
+    if isinstance(stop_strings, str):
+        stop_strings = [stop_strings]
+    if any(not stop for stop in stop_strings):
+        raise ValueError("Stop strings must be nonempty.")
+    include_stop = sampling_params.get("include_stop_str_in_output", False)
+
+    class StopOnResponseStrings(StoppingCriteria):
+        def __init__(self, prompt_length):
+            self.prompt_length = prompt_length
+
+        def __call__(self, input_ids, scores, **kwargs):
+            texts = tokenizer.batch_decode(
+                input_ids[:, self.prompt_length:], skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+            return torch.tensor(
+                [any(stop in text for stop in stop_strings) for text in texts],
+                dtype=torch.bool, device=input_ids.device,
+            )
+
+    repeated_prompts = [prompt for prompt in prompts for _ in range(n)]
+    answers = []
+    was_training = model.training
+    padding_side, pad_token = tokenizer.padding_side, tokenizer.pad_token
+    try:
+        model.eval()
+        tokenizer.padding_side = "left"
+        if tokenizer.pad_token_id is None:
+            if tokenizer.eos_token_id is None:
+                raise ValueError("The tokenizer needs a padding token or an EOS token.")
+            tokenizer.pad_token = tokenizer.eos_token
+
+        # Isolate rollout sampling from the training process's RNG state.
+        with torch.random.fork_rng(), torch.no_grad():
+            if sampling_params.get("seed") is not None:
+                torch.manual_seed(sampling_params["seed"])
+            for start in range(0, len(repeated_prompts), batch_size):
+                inputs = tokenizer(
+                    repeated_prompts[start:start + batch_size],
+                    padding=True, return_tensors="pt", return_attention_mask=True,
+                ).to(model.device)
+                prompt_length = inputs["input_ids"].shape[1]
+                generation_kwargs = {
+                    "max_new_tokens": max_tokens,
+                    "do_sample": temperature > 0,
+                    "num_beams": 1,
+                    "num_return_sequences": 1,
+                    "pad_token_id": tokenizer.pad_token_id,
+                    "use_cache": True,
+                    "return_dict_in_generate": False,
+                }
+                if temperature > 0:
+                    generation_kwargs["temperature"] = temperature
+                    generation_kwargs["top_k"] = 0
+                    generation_kwargs["top_p"] = 1.0
+                if stop_strings:
+                    generation_kwargs["stopping_criteria"] = StoppingCriteriaList([
+                        StopOnResponseStrings(prompt_length),
+                    ])
+                outputs = model.generate(**inputs, **generation_kwargs)
+                texts = tokenizer.batch_decode(
+                    outputs[:, prompt_length:], skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                )
+                for text in texts:
+                    matches = [(text.find(stop), stop) for stop in stop_strings if stop in text]
+                    if matches:
+                        position, stop = min(matches, key=lambda match: match[0])
+                        text = text[:position + (len(stop) if include_stop else 0)]
+                    answers.append(text)
+    finally:
+        tokenizer.padding_side, tokenizer.pad_token = padding_side, pad_token
+        model.train(was_training)
+    return answers
+
 def answer_questions(model, samples, prompt_type, sampling_params):
     prompts = generate_prompts(samples, prompt_type)
     return generate_model_answers(model, prompts, sampling_params)

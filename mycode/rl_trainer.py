@@ -149,18 +149,20 @@ class RLTrainer():
 
     def train(self):
 
-        progress_bar = tqdm(range(self.args.num_rollout_steps))
+        args = self.args
+
+        progress_bar = tqdm(range(args.num_rollout_steps))
         for step in progress_bar:
 
             # Fetch questions
             questions = sample_data(self.train_dataset, n=self.num_prompts_per_batch)
             repeated_questions = []
             for question in questions:
-                repeated_questions += [question] * self.args.group_size
+                repeated_questions += [question] * args.group_size
 
             # Generate prompts, ground truths and rollouts
-            prompts = generate_prompts(questions, self.args.prompt_type)
-            repeated_prompts = generate_prompts(repeated_questions, self.args.prompt_type)
+            prompts = generate_prompts(questions, args.prompt_type)
+            repeated_prompts = generate_prompts(repeated_questions, args.prompt_type)
             rollout_responses = generate_model_answers(self.vllm_server, prompts, self.sampling_params)
             repeated_ground_truths = extract_gt_answers(repeated_questions)
                     
@@ -168,36 +170,36 @@ class RLTrainer():
                 model=self.model,
                 tokenizer=self.tokenizer,
                 optimizer=self.optimizer,
-                gradient_accumulation_steps=self.args.gradient_accumulation_steps,
-                max_grad_norm=self.args.max_grad_norm,
-                reward_fn=self.args.reward_fn,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                max_grad_norm=args.max_grad_norm,
+                reward_fn=args.reward_fn,
                 repeated_prompts=repeated_prompts,
                 rollout_responses=rollout_responses,
                 repeated_ground_truths=repeated_ground_truths,
-                group_size=self.args.group_size
+                group_size=args.group_size
                 #Other parameters are defaults for now
             )
 
             progress_bar.set_postfix({'loss': f"{loss.item():.4f}"})
-            if self.args.use_wandb:
+            if args.use_wandb:
                 self.wandb_run.log(log)
             self.vllm_server.sync_policy_weights(self.model)
 
             #log and evaluate
-            if step % self.args.eval_step:
+            if step % args.eval_step:
 
                 # Fetch questions
-                questions = sample_data(self.test_dataset, n=self.args.n_eval_examples)
-                prompts = generate_prompts(questions, self.args.prompt_type)
+                questions = sample_data(self.test_dataset, n=args.n_eval_examples)
+                prompts = generate_prompts(questions, args.prompt_type)
 
                 # Evaluate model
                 answers = generate_model_answers(self.vllm_server, prompts, self.eval_sampling_params) 
                 ground_truths = extract_gt_answers(questions)
-                _, eval_reward_log = compute_rollout_rewards(self.args.reward_fn, answers, ground_truths)
+                _, eval_reward_log = compute_rollout_rewards(args.reward_fn, answers, ground_truths)
                 mean_reward, mean_format_reward = eval_reward_log["mean_reward"], eval_reward_log["mean_format_reward"]
                 print(f"Step {step}: reward: {mean_reward}\t format_reward: {mean_format_reward}")
 
-                if self.args.use_wandb:
+                if args.use_wandb:
                     self.wandb_run.log({
                         "eval_mean_reward": mean_reward,
                         "eval_mean_format_reward": mean_format_reward

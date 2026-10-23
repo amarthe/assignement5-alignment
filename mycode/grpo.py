@@ -238,7 +238,7 @@ def grpo_train_step(
         rollout_responses: list[str],
         repeated_ground_truths: list[str],
         group_size: int,
-        # Reward normalization
+        #» Reward normalization
         baseline: Literal["mean", "none"] = "mean",
         advantage_eps: float = 1e-6,
         advantage_normalizer: Literal["std", "none", "mean"] = "std",
