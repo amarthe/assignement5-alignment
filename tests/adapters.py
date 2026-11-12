@@ -11,6 +11,7 @@ from transformers import PreTrainedTokenizerBase
 from mycode.grpo import tokenize_prompt_and_output, get_response_log_probs, compute_rollout_rewards, compute_group_normalized_rewards, compute_policy_gradient_loss, aggregate_loss_across_microbatch, grpo_train_step
 from mycode.instruction_tuning_evaluation import parse_mmlu, parse_gsm8k
 from mycode.instruction_tuning import CustomDataset, iterate_batches
+from mycode.dpo import compute_per_instance_dpo_loss
 
 def run_tokenize_prompt_and_output(
     prompt_strs: list[str],
@@ -462,4 +463,4 @@ def run_compute_per_instance_dpo_loss(
     Returns:
         torch.Tensor with the DPO loss for this example.
     """
-    raise NotImplementedError
+    return compute_per_instance_dpo_loss(lm, lm_ref, tokenizer, beta, prompt, response_chosen, response_rejected)

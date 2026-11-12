@@ -31,7 +31,7 @@ model = AutoModelForCausalLM(
 dataset = CustomDataset(tokenizer, dataset_path, seq_length, shuffle=True)
 total_step = (len(dataset) // batch_size)
 
-optimizer = AdamW(model.parameter(), lr=lr, betas=betas, weight_decay=wd)
+optimizer = AdamW(model.parameters(), lr=lr, betas=betas, weight_decay=wd)
 scheduler = CosineAnnealingLR(optimizer, T_max=total_step)
 
 for batch in iterate_batches(dataset, batch_size, shuffle=True):
@@ -46,7 +46,7 @@ for batch in iterate_batches(dataset, batch_size, shuffle=True):
         loss = F.cross_entropy(logits, labels_minibatch) / grad_acc_step
         loss.backward()
 
-    clip_grad_norm_(model.parameters())
+    clip_grad_norm_(model.parameters(), gradient_clip)
     optimizer.step()
     optimizer.zero_grad()
     scheduler.step()

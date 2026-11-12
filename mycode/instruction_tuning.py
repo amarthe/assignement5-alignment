@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import random
 import json
+from tqdm import tqdm
 
 import os
 from transformers import PreTrainedTokenizerBase
@@ -21,7 +22,7 @@ class CustomDataset(Dataset):
         tokens = []
         tokenized_prompts = []
         with open(dataset_path, 'r') as f:
-            for line in f:
+            for line in tqdm(f):
                 sample = json.loads(line)
                 prompt = prompt_template.format(instruction=sample["prompt"], response=sample["response"])
                 tokenized_prompt = tokenizer(prompt)["input_ids"]
